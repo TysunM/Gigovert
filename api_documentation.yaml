@@ -1,0 +1,318 @@
+openapi: 3.0.3
+info:
+  title: Universal File Converter API
+  description: A robust backend API for converting files between different formats
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@fileconverter.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5000/api
+    description: Development server
+  - url: https://your-domain.com/api
+    description: Production server
+
+paths:
+  /formats:
+    get:
+      summary: Get supported conversion formats
+      description: Returns a mapping of supported input formats to their possible output formats
+      tags:
+        - Conversion
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+              example:
+                youtube: ["wav", "mp3", "aiff", "mp4", "flac"]
+                mp3: ["flac", "wav"]
+                wav: ["mp3", "flac", "ogg", "aiff"]
+
+  /convert:
+    post:
+      summary: Start a file conversion job
+      description: Initiates a new file conversion job with the specified parameters
+      tags:
+        - Conversion
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - from
+                - to
+                - source
+              properties:
+                from:
+                  type: string
+                  description: Source file format
+                  example: mp4
+                to:
+                  type: string
+                  description: Target file format
+                  example: mov
+                source:
+                  type: string
+                  enum: [upload, youtube]
+                  description: Source type (file upload or YouTube URL)
+                file:
+                  type: string
+                  format: binary
+                  description: File to convert (required if source is 'upload')
+                url:
+                  type: string
+                  format: uri
+                  description: YouTube URL (required if source is 'youtube')
+                  example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+      responses:
+        '202':
+          description: Conversion job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                    description: Unique job identifier
+                  status:
+                    type: string
+                    enum: [queued]
+                    description: Initial job status
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /status/{job_id}:
+    get:
+      summary: Get conversion job status
+      description: Returns the current status and progress of a conversion job
+      tags:
+        - Conversion
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Job identifier
+      responses:
+        '200':
+          description: Job status retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [queued, processing, completed, failed]
+                  progress:
+                    type: integer
+                    minimum: 0
+                    maximum: 100
+                    description: Conversion progress percentage
+                  error_message:
+                    type: string
+                    nullable: true
+                    description: Error message if conversion failed
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /download/{job_id}:
+    get:
+      summary: Download converted file
+      description: Downloads the converted file for a completed job
+      tags:
+        - Conversion
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Job identifier
+      responses:
+        '200':
+          description: File download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Conversion not completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Job or file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /cleanup/{job_id}:
+    delete:
+      summary: Clean up job files
+      description: Removes job files and database record
+      tags:
+        - Conversion
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Job identifier
+      responses:
+        '200':
+          description: Job cleaned up successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '404':
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      summary: Health check
+      description: Returns the health status of the service
+      tags:
+        - Monitoring
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  database:
+                    type: string
+                  disk_free_gb:
+                    type: number
+                  memory_usage_percent:
+                    type: number
+                  cpu_usage_percent:
+                    type: number
+                  version:
+                    type: string
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /metrics:
+    get:
+      summary: Get application metrics
+      description: Returns detailed application and system metrics
+      tags:
+        - Monitoring
+      responses:
+        '200':
+          description: Metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                    format: date-time
+                  jobs:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      completed:
+                        type: integer
+                      failed:
+                        type: integer
+                      processing:
+                        type: integer
+                      queued:
+                        type: integer
+                      success_rate_percent:
+                        type: number
+                  system:
+                    type: object
+                    properties:
+                      cpu_percent:
+                        type: number
+                      memory_percent:
+                        type: number
+                      memory_available_gb:
+                        type: number
+                      disk_free_gb:
+                        type: number
+                      disk_used_percent:
+                        type: number
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+      required:
+        - error
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+tags:
+  - name: Conversion
+    description: File conversion operations
+  - name: Monitoring
+    description: Health and monitoring endpoints
